@@ -24,7 +24,7 @@
       let x = 16 * Math.pow(Math.sin(t), 3);
       let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
       // pha trộn với vòng tròn -> trái tim tròn trịa, bớt nhọn
-      const round = 0.30;                 // 0 = tim nhọn, 1 = tròn xoe
+      const round = 0.66;                 // 0 = tim nhọn, 1 = tròn xoe
       const R = 15, yc = -3;
       x = x * (1 - round) + (R * Math.sin(t)) * round;
       y = y * (1 - round) + (yc + R * Math.cos(t)) * round;
@@ -32,19 +32,18 @@
     }
 
     // ----- tạo các hạt lấp đầy trái tim -----
-    const N = 1600;
+    const N = 3000;
     let particles = [];
     function buildParticles() {
       particles = [];
       for (let i = 0; i < N; i++) {
         const t = Math.random() * Math.PI * 2;
         const [hx, hy] = heartPoint(t);
-        const f = Math.sqrt(Math.random());        // lệch ra rìa cho sáng viền
-        const sgn = Math.random() < 0.5 ? -1 : 1;
+        const f = Math.sqrt(Math.random());        // phân bố đều khắp mặt tim
         particles.push({
           bx: hx * f,
           by: hy * f,
-          bz: sgn * 8.5 * Math.sqrt(Math.max(0, 1 - f * f)),  // độ phồng -> trái tim 3D mũm mĩm
+          bz: (Math.random() * 2 - 1) * 11 * Math.sqrt(Math.max(0, 1 - f * f)),  // rải khắp bề dày -> đặc ruột 3D
           edge: f,                                  // càng gần rìa càng sáng
           phase: Math.random() * Math.PI * 2,
           spd: 0.6 + Math.random() * 1.4,
@@ -83,9 +82,9 @@
       canvas.style.width = innerWidth + 'px';
       canvas.style.height = innerHeight + 'px';
       cx = W / 2;
-      cy = H * 0.40;
-      scale = Math.min(W, H) * 0.5 / 34;            // vừa màn hình (responsive)
-      bottomY = cy + 17 * scale;                    // đáy trái tim
+      cy = H * 0.38;
+      scale = Math.min(W, H) * 0.88 / 34;           // to đùng, vừa màn hình (responsive)
+      bottomY = cy + 15 * scale;                    // đáy trái tim
     }
     addEventListener('resize', resize);
 
@@ -104,8 +103,9 @@
       ctx.beginPath(); ctx.arc(x, y, r * 2.6, 0, 6.283); ctx.fill();
     }
 
+    const SPEED = 0.65;                             // < 1 = chạy chậm (slow-motion)
     function frame(now) {
-      const t = now / 1000;
+      const t = now / 1000 * SPEED;
       const s = pulse(t * 1.05) * scale;
       const rCore = Math.max(1, scale * 0.14);
 
@@ -154,7 +154,7 @@
 
         // độ sáng & kích thước theo chiều sâu -> nổi khối 3D
         const depthShade = 1 + (Math.min(Math.max(persp, 0.7), 1.4) - 1) * e;
-        const a = (0.3 + 0.6 * p.edge) * (0.65 + 0.35 * Math.sin(t * p.spd * 4 + p.phase)) * depthShade;
+        const a = (0.5 + 0.4 * p.edge) * (0.65 + 0.35 * Math.sin(t * p.spd * 4 + p.phase)) * depthShade;
         dot(x, y, rCore * (0.8 + p.edge * 0.6) * depthShade, p.hue, a);
 
         // --- bóng phản chiếu cyan (chỉ khi đã thành tim) ---
@@ -174,9 +174,9 @@
 
       // --- bụi rơi (mờ dần khi tan) ---
       for (const d of dust) {
-        d.y += d.vy * 0.016;
-        d.x += d.vx * 0.016;
-        d.life += 0.012;
+        d.y += d.vy * 0.016 * SPEED;                // khói trôi chậm theo slow-motion
+        d.x += d.vx * 0.016 * SPEED;
+        d.life += 0.012 * SPEED;
         const x = cx + d.x * scale;
         const y = bottomY + d.y * scale;
         const a = Math.max(0, 1 - d.life) * 0.8 * Math.max(0, e);
