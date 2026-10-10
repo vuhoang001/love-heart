@@ -227,7 +227,32 @@ function frame(ts) {
     ctx.fillRect(x - s / 2, y - s / 2, s, s);
   }
 
-  // ---- heart body + aura ----
+  // ---- message drawn INSIDE the burst (additive, so glitter overlays it) ----
+  if (form < 0.995) {
+    const ta = Math.pow(1 - form, 0.65);              // fade in as it bursts
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let fsize = unit * 0.16;
+    const setFont = () => { ctx.font = `${fsize}px "Pacifico", "Baloo 2", cursive`; };
+    setFont();
+    let wMax = 0;
+    for (const line of MESSAGE) wMax = Math.max(wMax, ctx.measureText(line).width);
+    const maxW = unit * 0.80;
+    if (wMax > maxW) { fsize *= maxW / wMax; setFont(); }
+    const lh = fsize * 1.15;
+    const y0 = cy - (MESSAGE.length - 1) * lh / 2;
+    const bob = Math.sin(time * 1.1) * unit * 0.012;  // gentle float
+    ctx.shadowColor = `rgba(255,120,205,${0.8 * ta})`;
+    ctx.shadowBlur = fsize * 0.5;
+    const grd = ctx.createLinearGradient(0, y0 - lh, 0, y0 + MESSAGE.length * lh);
+    grd.addColorStop(0, `rgba(255,220,240,${ta})`);
+    grd.addColorStop(1, `rgba(255,140,205,${ta})`);
+    ctx.fillStyle = grd;
+    for (let i = 0; i < MESSAGE.length; i++) ctx.fillText(MESSAGE[i], cx, y0 + i * lh + bob);
+    ctx.shadowBlur = 0;
+  }
+
+  // ---- heart body + aura (burst cloud overlays the message -> text sits inside) ----
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
     const tw = 0.55 + 0.45 * Math.sin(time * p.twSpeed + p.twPhase);
@@ -261,33 +286,6 @@ function frame(ts) {
     ctx.fillStyle = `hsla(${p.hue}, 96%, ${light}%, ${alpha})`;
     const s = p.size * pf * dpr;
     ctx.fillRect(sx - s / 2, sy - s / 2, s, s);
-  }
-
-  // ---- crisp message, shown while the heart is burst into the glitter cloud ----
-  if (form < 0.995) {
-    const ta = Math.pow(1 - form, 0.65);              // fade in as it bursts
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    let fsize = unit * 0.16;
-    const setFont = () => { ctx.font = `${fsize}px "Pacifico", "Baloo 2", cursive`; };
-    setFont();
-    let wMax = 0;
-    for (const line of MESSAGE) wMax = Math.max(wMax, ctx.measureText(line).width);
-    const maxW = unit * 0.80;
-    if (wMax > maxW) { fsize *= maxW / wMax; setFont(); }
-    const lh = fsize * 1.15;
-    const y0 = cy - (MESSAGE.length - 1) * lh / 2;
-    const bob = Math.sin(time * 1.1) * unit * 0.012;  // gentle float
-    ctx.shadowColor = `rgba(255,120,205,${0.85 * ta})`;
-    ctx.shadowBlur = fsize * 0.55;
-    const grd = ctx.createLinearGradient(0, y0 - lh, 0, y0 + MESSAGE.length * lh);
-    grd.addColorStop(0, `rgba(255,225,245,${ta})`);
-    grd.addColorStop(1, `rgba(255,150,210,${ta})`);
-    ctx.fillStyle = grd;
-    for (let i = 0; i < MESSAGE.length; i++) ctx.fillText(MESSAGE[i], cx, y0 + i * lh + bob);
-    ctx.shadowBlur = 0;
-    ctx.globalCompositeOperation = 'lighter';
   }
 
   ctx.globalCompositeOperation = 'source-over';
