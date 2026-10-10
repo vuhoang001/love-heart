@@ -162,8 +162,10 @@ function frame(ts) {
   const dpr = DPR;
   const unit = Math.min(W, H);
 
-  const ang = Math.sin(time * 0.55) * 0.52;   // gentle 3D rocking
-  const ca = Math.cos(ang), sa = Math.sin(ang);
+  const spin = time * 0.5;                      // continuous turn around vertical axis
+  const ca = Math.cos(spin), sa = Math.sin(spin);
+  const tilt = Math.sin(time * 0.33) * 0.22;    // gentle nodding tumble
+  const ct = Math.cos(tilt), st = Math.sin(tilt);
   const beat = 1 + Math.sin(time * 1.8) * 0.03;
 
   // ---- assemble cycle: heart holds, bursts apart, then re-gathers (loops) ----
@@ -225,11 +227,13 @@ function frame(ts) {
     const mx = p.x + (p.ox - p.x) * (1 - form);
     const my = p.y + (p.oy - p.y) * (1 - form);
     const mz = p.z + (p.oz - p.z) * (1 - form);
-    const xr = mx * ca - my * sa;
-    const dr = mx * sa + my * ca;
+    const xr = mx * ca - my * sa;        // screen-horizontal after spin
+    const dp = mx * sa + my * ca;        // depth after spin
+    const dr = dp * ct - mz * st;        // depth after tilt
+    const vz = dp * st + mz * ct;        // vertical after tilt
     const pf = F / (F - dr);
     const sx = cx + xr * scale * pf * beat;
-    const sy = cy - mz * scale * pf * beat;
+    const sy = cy - vz * scale * pf * beat;
 
     let ds = (dr + halfSpan) / (2 * halfSpan);
     if (ds < 0) ds = 0; else if (ds > 1) ds = 1;
