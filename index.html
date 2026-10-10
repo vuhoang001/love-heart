@@ -28,14 +28,40 @@ function heartF(x, y, z) {
 }
 function inside(x, y, z) { return heartF(x, y, z) <= 0; }
 
-// A scattered "burst" position in model space the particle flies out to.
-// Distance stays well under the camera distance F (4.2) to avoid projection blow-up.
-function scatterPos() {
-  const u = Math.random() * 2 - 1;
-  const th = Math.random() * Math.PI * 2;
-  const r = Math.sqrt(1 - u * u);
-  const dist = 1.7 + Math.random() * 0.9;      // 1.7..2.6 -> bursts ~2x the heart
-  return { ox: r * Math.cos(th) * dist, oy: r * Math.sin(th) * dist, oz: u * dist };
+// Sample a text message into normalized points (screen-plane, faces the viewer).
+// nx spans ~[-0.5, 0.5] (normalized by text width); multiply by a unit at draw.
+function buildTextPoints(lines) {
+  const CW = 1400, CH = 700;
+  const oc = document.createElement('canvas');
+  oc.width = CW; oc.height = CH;
+  const o = oc.getContext('2d');
+  o.clearRect(0, 0, CW, CH);
+  o.fillStyle = '#fff';
+  o.textAlign = 'center';
+  o.textBaseline = 'middle';
+  const fs = 230;
+  o.font = `bold ${fs}px "Segoe UI", Arial, sans-serif`;
+  const lh = fs * 1.08;
+  const startY = CH / 2 - (lines.length - 1) * lh / 2;
+  for (let i = 0; i < lines.length; i++) o.fillText(lines[i], CW / 2, startY + i * lh);
+
+  const img = o.getImageData(0, 0, CW, CH).data;
+  const raw = [];
+  let minX = CW, maxX = 0, minY = CH, maxY = 0;
+  const STEP = 4;
+  for (let y = 0; y < CH; y += STEP) {
+    for (let x = 0; x < CW; x += STEP) {
+      if (img[(y * CW + x) * 4 + 3] > 128) {
+        raw.push([x, y]);
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (!raw.length) return [{ nx: 0, ny: 0 }];
+  const tw = Math.max(1, maxX - minX);
+  const mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+  return raw.map(([x, y]) => ({ nx: (x - mx) / tw, ny: (y - my) / tw }));
 }
 
 const pts = [];        // heart body + aura (rotate together in 3D)
@@ -60,7 +86,7 @@ function build() {
     const surf = Math.max(0, 1 + f * 3.2);   // ~1 at surface -> 0 deep inside
 
     pts.push({
-      x, y, z, surf, aura: false, ...scatterPos(),
+      x, y, z, surf, aura: false,
       size: 0.9 + Math.random() * 1.5 + surf * 1.1,
       base: 0.30 + surf * 0.40,                // lower -> additive stacks stay pink
       twPhase: Math.random() * Math.PI * 2,
@@ -73,7 +99,7 @@ function build() {
     if (surf > 0.74 && Math.random() < 1.0) {
       const g = 1.02 + Math.random() * 0.16;    // wider band -> thicker, fuller rim
       pts.push({
-        x: x * g, y: y * g, z: z * g, surf: 0, aura: true, ...scatterPos(),
+        x: x * g, y: y * g, z: z * g, surf: 0, aura: true,
         size: 0.9 + Math.random() * 1.5,
         base: 0.38 + Math.random() * 0.28,       // crisp rim, not blown out
         twPhase: Math.random() * Math.PI * 2,
@@ -155,6 +181,16 @@ window.addEventListener('resize', resize);
 build();
 resize();
 
+// Each heart particle also gets a target inside the "Hello meow meow" text,
+// so the burst re-forms the words (then gathers back into the heart).
+const textPts = buildTextPoints(['Hello', 'meow meow']);
+const TEXTW = 0.82;   // text width as a fraction of the screen's short side
+for (const p of pts) {
+  p.ti = (Math.random() * textPts.length) | 0;
+  p.tjx = (Math.random() - 0.5) * 0.010;   // tiny glitter jitter around the glyph
+  p.tjy = (Math.random() - 0.5) * 0.010;
+}
+
 let t0 = null;
 function frame(ts) {
   if (t0 === null) t0 = ts;
@@ -223,35 +259,46 @@ function frame(ts) {
   // ---- heart body + aura ----
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
-    // lerp between the heart target and its scattered burst position
-    const mx = p.x + (p.ox - p.x) * (1 - form);
-    const my = p.y + (p.oy - p.y) * (1 - form);
-    const mz = p.z + (p.oz - p.z) * (1 - form);
-    const xr = mx * ca - my * sa;        // screen-horizontal after spin
-    const dp = mx * sa + my * ca;        // depth after spin
-    const dr = dp * ct - mz * st;        // depth after tilt
-    const vz = dp * st + mz * ct;        // vertical after tilt
-    const pf = F / (F - dr);
-    const sx = cx + xr * scale * pf * beat;
-    const sy = cy - vz * scale * pf * beat;
+    const tw = 0.55 + 0.45 * Math.sin(time * p.twSpeed + p.twPhase);
 
+    // --- heart endpoint: full 3D spin/tilt/projection ---
+    const xr = p.x * ca - p.y * sa;      // screen-horizontal after spin
+    const dp = p.x * sa + p.y * ca;      // depth after spin
+    const dr = dp * ct - p.z * st;       // depth after tilt
+    const vz = dp * st + p.z * ct;       // vertical after tilt
+    const pf = F / (F - dr);
+    const hx = cx + xr * scale * pf * beat;
+    const hy = cy - vz * scale * pf * beat;
     let ds = (dr + halfSpan) / (2 * halfSpan);
     if (ds < 0) ds = 0; else if (ds > 1) ds = 1;
     const depthShade = 0.45 + 0.55 * ds;
-    const tw = 0.55 + 0.45 * Math.sin(time * p.twSpeed + p.twPhase);
-
-    let alpha, light;
+    let hAlpha, hLight;
     if (p.aura) {
-      alpha = p.base * (0.5 + 0.5 * tw) * (0.6 + 0.4 * depthShade);
-      light = 58;                               // was 70 -> less glare, more pink
+      hAlpha = p.base * (0.5 + 0.5 * tw) * (0.6 + 0.4 * depthShade);
+      hLight = 58;                              // less glare, more pink
     } else {
-      alpha = p.base * depthShade * (0.45 + 0.55 * tw);
-      light = 38 + depthShade * 16;             // was 44+24 -> keep saturated pink
+      hAlpha = p.base * depthShade * (0.45 + 0.55 * tw);
+      hLight = 38 + depthShade * 16;            // keep saturated pink
     }
+    const hSize = p.size * pf * dpr;
+
+    // --- text endpoint: flat, faces the viewer so "Hello meow meow" reads ---
+    const tp = textPts[p.ti];
+    const tx = cx + (tp.nx + p.tjx) * TEXTW * unit;
+    const ty = cy + (tp.ny + p.tjy) * TEXTW * unit;
+    const tAlpha = p.base * (0.55 + 0.45 * tw);
+    const tLight = 60;
+    const tSize = (1.0 + 0.6 * tw) * dpr;
+
+    // --- blend between heart (form=1) and text (form=0) ---
+    const sx = hx * form + tx * (1 - form);
+    const sy = hy * form + ty * (1 - form);
+    const alpha = hAlpha * form + tAlpha * (1 - form);
     if (alpha < 0.025) continue;
+    const light = hLight * form + tLight * (1 - form);
+    const s = hSize * form + tSize * (1 - form);
 
     ctx.fillStyle = `hsla(${p.hue}, 96%, ${light}%, ${alpha})`;
-    const s = p.size * pf * dpr;
     ctx.fillRect(sx - s / 2, sy - s / 2, s, s);
   }
 
