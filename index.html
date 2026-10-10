@@ -137,9 +137,9 @@ function resize() {
   const dpr = DPR;
   W = canvas.width = window.innerWidth * dpr;
   H = canvas.height = window.innerHeight * dpr;
-  cx = W / 2; cy = H / 2;
+  cx = W / 2; cy = H * 0.45;   // lift slightly to leave room for the base below
   const pfMax = F / (F - halfSpan);
-  scale = (Math.min(W, H) * 0.74 / 2) / (halfSpan * pfMax);
+  scale = (Math.min(W, H) * 0.86 / 2) / (halfSpan * pfMax);   // bigger heart
 }
 window.addEventListener('resize', resize);
 build();
