@@ -28,6 +28,16 @@ function heartF(x, y, z) {
 }
 function inside(x, y, z) { return heartF(x, y, z) <= 0; }
 
+// A scattered "burst" position in model space the particle flies out to.
+// Distance stays well under the camera distance F (4.2) to avoid projection blow-up.
+function scatterPos() {
+  const u = Math.random() * 2 - 1;
+  const th = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(1 - u * u);
+  const dist = 1.7 + Math.random() * 0.9;      // 1.7..2.6 -> bursts ~2x the heart
+  return { ox: r * Math.cos(th) * dist, oy: r * Math.sin(th) * dist, oz: u * dist };
+}
+
 const pts = [];        // heart body + aura (rotate together in 3D)
 const wind = [];       // flowing glitter mist underneath (screen space)
 const base = [];       // wide flat glitter cushion ("pedestal") under the heart
@@ -50,7 +60,7 @@ function build() {
     const surf = Math.max(0, 1 + f * 3.2);   // ~1 at surface -> 0 deep inside
 
     pts.push({
-      x, y, z, surf, aura: false,
+      x, y, z, surf, aura: false, ...scatterPos(),
       size: 0.9 + Math.random() * 1.5 + surf * 1.1,
       base: 0.30 + surf * 0.40,                // lower -> additive stacks stay pink
       twPhase: Math.random() * Math.PI * 2,
@@ -63,7 +73,7 @@ function build() {
     if (surf > 0.74 && Math.random() < 1.0) {
       const g = 1.02 + Math.random() * 0.16;    // wider band -> thicker, fuller rim
       pts.push({
-        x: x * g, y: y * g, z: z * g, surf: 0, aura: true,
+        x: x * g, y: y * g, z: z * g, surf: 0, aura: true, ...scatterPos(),
         size: 0.9 + Math.random() * 1.5,
         base: 0.38 + Math.random() * 0.28,       // crisp rim, not blown out
         twPhase: Math.random() * Math.PI * 2,
@@ -156,6 +166,18 @@ function frame(ts) {
   const ca = Math.cos(ang), sa = Math.sin(ang);
   const beat = 1 + Math.sin(time * 1.8) * 0.03;
 
+  // ---- assemble cycle: heart holds, bursts apart, then re-gathers (loops) ----
+  // form = 1 -> full heart, 0 -> scattered burst cloud.
+  const CYCLE = 9.0;
+  const HOLD = 4.2, BURST = 1.4, SCAT = 0.7, GATHER = 2.7;   // segments sum to CYCLE
+  // offset so the page opens on the GATHER segment (particles fly in and form)
+  const ph = ((time + HOLD + BURST + SCAT) % CYCLE + CYCLE) % CYCLE;
+  let form;
+  if (ph < HOLD) form = 1;                                           // hold heart
+  else if (ph < HOLD + BURST) { const u = (ph - HOLD) / BURST; form = 1 - u * u * u; }   // ease-in burst out
+  else if (ph < HOLD + BURST + SCAT) form = 0;                      // scattered hold
+  else { const u = (ph - HOLD - BURST - SCAT) / GATHER; form = 1 - Math.pow(1 - u, 3); } // ease-out gather in
+
   ctx.fillStyle = '#05020a';
   ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'lighter';
@@ -199,13 +221,19 @@ function frame(ts) {
   // ---- heart body + aura ----
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
-    const xr = p.x * ca - p.y * sa;
-    const dr = p.x * sa + p.y * ca;
+    // lerp between the heart target and its scattered burst position
+    const mx = p.x + (p.ox - p.x) * (1 - form);
+    const my = p.y + (p.oy - p.y) * (1 - form);
+    const mz = p.z + (p.oz - p.z) * (1 - form);
+    const xr = mx * ca - my * sa;
+    const dr = mx * sa + my * ca;
     const pf = F / (F - dr);
     const sx = cx + xr * scale * pf * beat;
-    const sy = cy - p.z * scale * pf * beat;
+    const sy = cy - mz * scale * pf * beat;
 
-    const depthShade = 0.45 + 0.55 * ((dr + halfSpan) / (2 * halfSpan));
+    let ds = (dr + halfSpan) / (2 * halfSpan);
+    if (ds < 0) ds = 0; else if (ds > 1) ds = 1;
+    const depthShade = 0.45 + 0.55 * ds;
     const tw = 0.55 + 0.45 * Math.sin(time * p.twSpeed + p.twPhase);
 
     let alpha, light;
