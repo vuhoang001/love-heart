@@ -232,18 +232,18 @@ function frame(ts) {
     const ta = Math.pow(1 - form, 0.65);              // fade in as it bursts
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    let fsize = unit * 0.16;
+    let fsize = unit * 0.092;                         // smaller -> nests inside the cloud
     const setFont = () => { ctx.font = `${fsize}px "Pacifico", "Baloo 2", cursive`; };
     setFont();
     let wMax = 0;
     for (const line of MESSAGE) wMax = Math.max(wMax, ctx.measureText(line).width);
-    const maxW = unit * 0.80;
+    const maxW = unit * 0.50;
     if (wMax > maxW) { fsize *= maxW / wMax; setFont(); }
     const lh = fsize * 1.15;
     const y0 = cy - (MESSAGE.length - 1) * lh / 2;
     const bob = Math.sin(time * 1.1) * unit * 0.012;  // gentle float
-    ctx.shadowColor = `rgba(255,120,205,${0.8 * ta})`;
-    ctx.shadowBlur = fsize * 0.5;
+    ctx.shadowColor = `rgba(255,120,205,${0.5 * ta})`;
+    ctx.shadowBlur = fsize * 0.3;
     const grd = ctx.createLinearGradient(0, y0 - lh, 0, y0 + MESSAGE.length * lh);
     grd.addColorStop(0, `rgba(255,220,240,${ta})`);
     grd.addColorStop(1, `rgba(255,140,205,${ta})`);
