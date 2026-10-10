@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>3D Glitter Heart 💗</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&display=swap" rel="stylesheet">
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #05020a; overflow: hidden; }
   canvas { display: block; width: 100%; height: 100%; }
@@ -40,7 +43,7 @@ function buildTextPoints(lines) {
   o.textAlign = 'center';
   o.textBaseline = 'middle';
   const fs = 230;
-  o.font = `bold ${fs}px "Segoe UI", Arial, sans-serif`;
+  o.font = `800 ${fs}px "Baloo 2", "Comic Sans MS", "Segoe UI", cursive`;
   const lh = fs * 1.08;
   const startY = CH / 2 - (lines.length - 1) * lh / 2;
   for (let i = 0; i < lines.length; i++) o.fillText(lines[i], CW / 2, startY + i * lh);
@@ -58,10 +61,11 @@ function buildTextPoints(lines) {
       }
     }
   }
-  if (!raw.length) return [{ nx: 0, ny: 0 }];
+  if (!raw.length) return [{ nx: 0, ny: 0, nz: 0 }];
   const tw = Math.max(1, maxX - minX);
   const mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
-  return raw.map(([x, y]) => ({ nx: (x - mx) / tw, ny: (y - my) / tw }));
+  // nz gives the text a bit of depth (a glitter slab) for a spatial feel
+  return raw.map(([x, y]) => ({ nx: (x - mx) / tw, ny: (y - my) / tw, nz: (Math.random() - 0.5) * 0.22 }));
 }
 
 const pts = [];        // heart body + aura (rotate together in 3D)
@@ -183,12 +187,24 @@ resize();
 
 // Each heart particle also gets a target inside the "Hello meow meow" text,
 // so the burst re-forms the words (then gathers back into the heart).
-const textPts = buildTextPoints(['Hello', 'meow meow']);
+let textPts = buildTextPoints(['Hello', 'meow meow']);
 const TEXTW = 0.82;   // text width as a fraction of the screen's short side
-for (const p of pts) {
-  p.ti = (Math.random() * textPts.length) | 0;
-  p.tjx = (Math.random() - 0.5) * 0.010;   // tiny glitter jitter around the glyph
-  p.tjy = (Math.random() - 0.5) * 0.010;
+function assignText() {
+  for (const p of pts) {
+    p.ti = (Math.random() * textPts.length) | 0;
+    if (p.tjx === undefined) {
+      p.tjx = (Math.random() - 0.5) * 0.010;   // tiny glitter jitter around the glyph
+      p.tjy = (Math.random() - 0.5) * 0.010;
+    }
+  }
+}
+assignText();
+// The cute font may not be ready yet; rebuild the text once it loads.
+if (document.fonts && document.fonts.load) {
+  document.fonts.load('800 230px "Baloo 2"').then(() => {
+    textPts = buildTextPoints(['Hello', 'meow meow']);
+    assignText();
+  }).catch(() => {});
 }
 
 let t0 = null;
@@ -203,6 +219,8 @@ function frame(ts) {
   const tilt = Math.sin(time * 0.33) * 0.22;    // gentle nodding tumble
   const ct = Math.cos(tilt), st = Math.sin(tilt);
   const beat = 1 + Math.sin(time * 1.8) * 0.03;
+  const tSway = Math.sin(time * 0.6) * 0.18;    // gentle 3D sway for the burst text
+  const tcs = Math.cos(tSway), tsn = Math.sin(tSway);
 
   // ---- assemble cycle: heart holds, bursts apart, then re-gathers (loops) ----
   // form = 1 -> full heart, 0 -> scattered burst cloud.
@@ -282,13 +300,17 @@ function frame(ts) {
     }
     const hSize = p.size * pf * dpr;
 
-    // --- text endpoint: flat, faces the viewer so "Hello meow meow" reads ---
+    // --- text endpoint: swaying glitter slab (spatial, still readable) ---
     const tp = textPts[p.ti];
-    const tx = cx + (tp.nx + p.tjx) * TEXTW * unit;
-    const ty = cy + (tp.ny + p.tjy) * TEXTW * unit;
-    const tAlpha = p.base * (0.55 + 0.45 * tw);
+    const tnx = tp.nx + p.tjx, tny = tp.ny + p.tjy, tnz = tp.nz;
+    const rxx = tnx * tcs + tnz * tsn;          // horizontal after sway
+    const rzz = -tnx * tsn + tnz * tcs;         // depth after sway
+    const tpf = 1 / (1 - rzz * 0.6);            // perspective -> spatial depth
+    const tx = cx + rxx * TEXTW * unit * tpf;
+    const ty = cy + tny * TEXTW * unit * tpf;
+    const tAlpha = p.base * (0.55 + 0.45 * tw) * (0.7 + 0.3 * tpf);
     const tLight = 60;
-    const tSize = (1.0 + 0.6 * tw) * dpr;
+    const tSize = (1.0 + 0.6 * tw) * dpr * tpf;
 
     // --- blend between heart (form=1) and text (form=0) ---
     const sx = hx * form + tx * (1 - form);
