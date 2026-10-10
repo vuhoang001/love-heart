@@ -6,7 +6,7 @@
 <title>3D Glitter Heart 💗</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #05020a; overflow: hidden; }
   canvas { display: block; width: 100%; height: 100%; }
@@ -31,41 +31,14 @@ function heartF(x, y, z) {
 }
 function inside(x, y, z) { return heartF(x, y, z) <= 0; }
 
-// Sample a text message into normalized points (screen-plane, faces the viewer).
-// nx spans ~[-0.5, 0.5] (normalized by text width); multiply by a unit at draw.
-function buildTextPoints(lines) {
-  const CW = 1400, CH = 700;
-  const oc = document.createElement('canvas');
-  oc.width = CW; oc.height = CH;
-  const o = oc.getContext('2d');
-  o.clearRect(0, 0, CW, CH);
-  o.fillStyle = '#fff';
-  o.textAlign = 'center';
-  o.textBaseline = 'middle';
-  const fs = 230;
-  o.font = `800 ${fs}px "Baloo 2", "Comic Sans MS", "Segoe UI", cursive`;
-  const lh = fs * 1.08;
-  const startY = CH / 2 - (lines.length - 1) * lh / 2;
-  for (let i = 0; i < lines.length; i++) o.fillText(lines[i], CW / 2, startY + i * lh);
-
-  const img = o.getImageData(0, 0, CW, CH).data;
-  const raw = [];
-  let minX = CW, maxX = 0, minY = CH, maxY = 0;
-  const STEP = 4;
-  for (let y = 0; y < CH; y += STEP) {
-    for (let x = 0; x < CW; x += STEP) {
-      if (img[(y * CW + x) * 4 + 3] > 128) {
-        raw.push([x, y]);
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
-      }
-    }
-  }
-  if (!raw.length) return [{ nx: 0, ny: 0, nz: 0 }];
-  const tw = Math.max(1, maxX - minX);
-  const mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
-  // nz gives the text a bit of depth (a glitter slab) for a spatial feel
-  return raw.map(([x, y]) => ({ nx: (x - mx) / tw, ny: (y - my) / tw, nz: (Math.random() - 0.5) * 0.22 }));
+// A scattered 3D "burst" position the particle flies out to (model space).
+// Distance stays under the camera distance F (4.2) to avoid projection blow-up.
+function scatterPos() {
+  const u = Math.random() * 2 - 1;
+  const th = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(1 - u * u);
+  const dist = 1.6 + Math.random() * 1.0;      // 1.6..2.6 -> glittery cloud around the text
+  return { ox: r * Math.cos(th) * dist, oy: r * Math.sin(th) * dist, oz: u * dist };
 }
 
 const pts = [];        // heart body + aura (rotate together in 3D)
@@ -90,7 +63,7 @@ function build() {
     const surf = Math.max(0, 1 + f * 3.2);   // ~1 at surface -> 0 deep inside
 
     pts.push({
-      x, y, z, surf, aura: false,
+      x, y, z, surf, aura: false, ...scatterPos(),
       size: 0.9 + Math.random() * 1.5 + surf * 1.1,
       base: 0.30 + surf * 0.40,                // lower -> additive stacks stay pink
       twPhase: Math.random() * Math.PI * 2,
@@ -103,7 +76,7 @@ function build() {
     if (surf > 0.74 && Math.random() < 1.0) {
       const g = 1.02 + Math.random() * 0.16;    // wider band -> thicker, fuller rim
       pts.push({
-        x: x * g, y: y * g, z: z * g, surf: 0, aura: true,
+        x: x * g, y: y * g, z: z * g, surf: 0, aura: true, ...scatterPos(),
         size: 0.9 + Math.random() * 1.5,
         base: 0.38 + Math.random() * 0.28,       // crisp rim, not blown out
         twPhase: Math.random() * Math.PI * 2,
@@ -187,25 +160,7 @@ resize();
 
 // Each heart particle also gets a target inside the "Hello meow meow" text,
 // so the burst re-forms the words (then gathers back into the heart).
-let textPts = buildTextPoints(['Hello', 'meow meow']);
-const TEXTW = 0.82;   // text width as a fraction of the screen's short side
-function assignText() {
-  for (const p of pts) {
-    p.ti = (Math.random() * textPts.length) | 0;
-    if (p.tjx === undefined) {
-      p.tjx = (Math.random() - 0.5) * 0.010;   // tiny glitter jitter around the glyph
-      p.tjy = (Math.random() - 0.5) * 0.010;
-    }
-  }
-}
-assignText();
-// The cute font may not be ready yet; rebuild the text once it loads.
-if (document.fonts && document.fonts.load) {
-  document.fonts.load('800 230px "Baloo 2"').then(() => {
-    textPts = buildTextPoints(['Hello', 'meow meow']);
-    assignText();
-  }).catch(() => {});
-}
+const MESSAGE = ['Hello', 'meow meow'];   // shown crisply while the heart is burst
 
 let t0 = null;
 function frame(ts) {
@@ -219,8 +174,6 @@ function frame(ts) {
   const tilt = Math.sin(time * 0.33) * 0.22;    // gentle nodding tumble
   const ct = Math.cos(tilt), st = Math.sin(tilt);
   const beat = 1 + Math.sin(time * 1.8) * 0.03;
-  const tSway = Math.sin(time * 0.6) * 0.18;    // gentle 3D sway for the burst text
-  const tcs = Math.cos(tSway), tsn = Math.sin(tSway);
 
   // ---- assemble cycle: heart holds, bursts apart, then re-gathers (loops) ----
   // form = 1 -> full heart, 0 -> scattered burst cloud.
@@ -279,49 +232,62 @@ function frame(ts) {
     const p = pts[i];
     const tw = 0.55 + 0.45 * Math.sin(time * p.twSpeed + p.twPhase);
 
-    // --- heart endpoint: full 3D spin/tilt/projection ---
-    const xr = p.x * ca - p.y * sa;      // screen-horizontal after spin
-    const dp = p.x * sa + p.y * ca;      // depth after spin
-    const dr = dp * ct - p.z * st;       // depth after tilt
-    const vz = dp * st + p.z * ct;       // vertical after tilt
+    // lerp between the heart target and its scattered 3D burst cloud
+    const mx = p.x + (p.ox - p.x) * (1 - form);
+    const my = p.y + (p.oy - p.y) * (1 - form);
+    const mz = p.z + (p.oz - p.z) * (1 - form);
+    const xr = mx * ca - my * sa;        // screen-horizontal after spin
+    const dp = mx * sa + my * ca;        // depth after spin
+    const dr = dp * ct - mz * st;        // depth after tilt
+    const vz = dp * st + mz * ct;        // vertical after tilt
     const pf = F / (F - dr);
-    const hx = cx + xr * scale * pf * beat;
-    const hy = cy - vz * scale * pf * beat;
+    const sx = cx + xr * scale * pf * beat;
+    const sy = cy - vz * scale * pf * beat;
+
     let ds = (dr + halfSpan) / (2 * halfSpan);
     if (ds < 0) ds = 0; else if (ds > 1) ds = 1;
     const depthShade = 0.45 + 0.55 * ds;
-    let hAlpha, hLight;
+
+    let alpha, light;
     if (p.aura) {
-      hAlpha = p.base * (0.5 + 0.5 * tw) * (0.6 + 0.4 * depthShade);
-      hLight = 58;                              // less glare, more pink
+      alpha = p.base * (0.5 + 0.5 * tw) * (0.6 + 0.4 * depthShade);
+      light = 58;                               // less glare, more pink
     } else {
-      hAlpha = p.base * depthShade * (0.45 + 0.55 * tw);
-      hLight = 38 + depthShade * 16;            // keep saturated pink
+      alpha = p.base * depthShade * (0.45 + 0.55 * tw);
+      light = 38 + depthShade * 16;             // keep saturated pink
     }
-    const hSize = p.size * pf * dpr;
-
-    // --- text endpoint: swaying glitter slab (spatial, still readable) ---
-    const tp = textPts[p.ti];
-    const tnx = tp.nx + p.tjx, tny = tp.ny + p.tjy, tnz = tp.nz;
-    const rxx = tnx * tcs + tnz * tsn;          // horizontal after sway
-    const rzz = -tnx * tsn + tnz * tcs;         // depth after sway
-    const tpf = 1 / (1 - rzz * 0.6);            // perspective -> spatial depth
-    const tx = cx + rxx * TEXTW * unit * tpf;
-    const ty = cy + tny * TEXTW * unit * tpf;
-    const tAlpha = p.base * (0.55 + 0.45 * tw) * (0.7 + 0.3 * tpf);
-    const tLight = 60;
-    const tSize = (1.0 + 0.6 * tw) * dpr * tpf;
-
-    // --- blend between heart (form=1) and text (form=0) ---
-    const sx = hx * form + tx * (1 - form);
-    const sy = hy * form + ty * (1 - form);
-    const alpha = hAlpha * form + tAlpha * (1 - form);
     if (alpha < 0.025) continue;
-    const light = hLight * form + tLight * (1 - form);
-    const s = hSize * form + tSize * (1 - form);
 
     ctx.fillStyle = `hsla(${p.hue}, 96%, ${light}%, ${alpha})`;
+    const s = p.size * pf * dpr;
     ctx.fillRect(sx - s / 2, sy - s / 2, s, s);
+  }
+
+  // ---- crisp message, shown while the heart is burst into the glitter cloud ----
+  if (form < 0.995) {
+    const ta = Math.pow(1 - form, 0.65);              // fade in as it bursts
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let fsize = unit * 0.16;
+    const setFont = () => { ctx.font = `${fsize}px "Pacifico", "Baloo 2", cursive`; };
+    setFont();
+    let wMax = 0;
+    for (const line of MESSAGE) wMax = Math.max(wMax, ctx.measureText(line).width);
+    const maxW = unit * 0.80;
+    if (wMax > maxW) { fsize *= maxW / wMax; setFont(); }
+    const lh = fsize * 1.15;
+    const y0 = cy - (MESSAGE.length - 1) * lh / 2;
+    const bob = Math.sin(time * 1.1) * unit * 0.012;  // gentle float
+    ctx.shadowColor = `rgba(255,120,205,${0.85 * ta})`;
+    ctx.shadowBlur = fsize * 0.55;
+    const grd = ctx.createLinearGradient(0, y0 - lh, 0, y0 + MESSAGE.length * lh);
+    grd.addColorStop(0, `rgba(255,225,245,${ta})`);
+    grd.addColorStop(1, `rgba(255,150,210,${ta})`);
+    ctx.fillStyle = grd;
+    for (let i = 0; i < MESSAGE.length; i++) ctx.fillText(MESSAGE[i], cx, y0 + i * lh + bob);
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'lighter';
   }
 
   ctx.globalCompositeOperation = 'source-over';
