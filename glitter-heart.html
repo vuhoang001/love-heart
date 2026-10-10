@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Glitter Heart 💗</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #05020a; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H, cx, cy, scale;
+
+// ---- 3D heart implicit surface (Taubin heart) ----
+// f<=0 is inside. Axes: x=width, y=depth(thin), z=up(vertical).
+function heartF(x, y, z) {
+  const a = x * x + (9 / 4) * y * y + z * z - 1;
+  return a * a * a - x * x * z * z * z - (9 / 80) * y * y * z * z * z;
+}
+function inside(x, y, z) { return heartF(x, y, z) <= 0; }
+
+const pts = [];        // heart body + aura (rotate together in 3D)
+const wind = [];       // flowing glitter mist underneath (screen space)
+const base = [];       // wide flat glitter cushion ("pedestal") under the heart
+let halfSpan = 1;
+
+function build() {
+  pts.length = 0;
+
+  // --- Dense 3D fill ---
+  const TARGET = 15000;
+  let placed = 0, guard = 0;
+  while (placed < TARGET && guard < TARGET * 30) {
+    guard++;
+    const x = (Math.random() * 2 - 1) * 1.35;
+    const y = (Math.random() * 2 - 1) * 0.95;
+    const z = (Math.random() * 2 - 1) * 1.45;
+    if (!inside(x, y, z)) continue;
+
+    const f = heartF(x, y, z);
+    const surf = Math.max(0, 1 + f * 3.2);   // ~1 at surface -> 0 deep inside
+
+    pts.push({
+      x, y, z, surf, aura: false,
+      size: 0.9 + Math.random() * 1.5 + surf * 1.1,
+      base: 0.42 + surf * 0.55,
+      twPhase: Math.random() * Math.PI * 2,
+      twSpeed: 2.0 + Math.random() * 4.0,
+      hue: 316 + Math.random() * 30 + surf * 6,
+    });
+    placed++;
+
+    // --- (1) Bright outline hugging the heart silhouette (wider & thicker) ---
+    if (surf > 0.74 && Math.random() < 1.0) {
+      const g = 1.02 + Math.random() * 0.16;    // wider band -> thicker, fuller rim
+      pts.push({
+        x: x * g, y: y * g, z: z * g, surf: 0, aura: true,
+        size: 0.9 + Math.random() * 1.5,
+        base: 0.5 + Math.random() * 0.38,        // brighter, crisper rim
+        twPhase: Math.random() * Math.PI * 2,
+        twSpeed: 1.5 + Math.random() * 3.0,
+        hue: 333 + Math.random() * 9,            // hot pink, slightly whiter
+      });
+    }
+  }
+
+  // bounding half-span for auto-fit (includes aura)
+  let mh = 0, mv = 0;
+  for (const p of pts) {
+    mh = Math.max(mh, Math.abs(p.x), Math.abs(p.y));
+    mv = Math.max(mv, Math.abs(p.z));
+  }
+  halfSpan = Math.max(mh, mv);
+
+  // --- (2) Wind: swirling glitter DOTS under the heart (denser, cool color) ---
+  wind.length = 0;
+  const WIND = 4600;
+  for (let i = 0; i < WIND; i++) {
+    wind.push({
+      lane: 0.10 + Math.random() * 0.40,       // how far below center (fraction of unit)
+      dir: Math.random() < 0.5 ? 1 : -1,       // blow left or right
+      spanX: 0.8 + Math.random() * 1.0,        // horizontal travel (fraction of unit)
+      spd: 0.06 + Math.random() * 0.13,        // life speed
+      off: Math.random(),                      // life phase offset
+      curl: 0.6 + Math.random() * 1.8,         // how curly the path is
+      wav: 0.03 + Math.random() * 0.08,        // vertical curl amplitude (fraction)
+      sw: 0.8 + Math.random() * 2.0,           // slow bobbing freq
+      ph: Math.random() * Math.PI * 2,
+      a: 0.16 + Math.random() * 0.34,
+      hue: 256 + Math.random() * 34,           // blue-violet -> makes the pink heart pop
+      size: 0.7 + Math.random() * 1.8,
+      twPhase: Math.random() * Math.PI * 2,
+      twSpeed: 2.0 + Math.random() * 4.0,
+    });
+  }
+
+  // --- (3) Base: a wide, flat glitter cushion the heart rests on (screen space) ---
+  base.length = 0;
+  const BASE = 5200;
+  const RX = 0.66;   // horizontal radius (fraction of unit) -> spreads wide
+  const RY = 0.115;  // vertical radius (fraction of unit) -> flat but a touch thicker
+  for (let i = 0; i < BASE; i++) {
+    // concentrate toward the center: bias radius with a power curve
+    const r = Math.pow(Math.random(), 0.62);   // 0 center .. 1 edge, denser in middle
+    const th = Math.random() * Math.PI * 2;
+    const ex = Math.cos(th) * r;               // -1..1 within ellipse
+    const ey = Math.sin(th) * r;
+    base.push({
+      ex: ex * RX,                             // horizontal offset (fraction of unit)
+      ey: ey * RY,                             // vertical offset (fraction of unit)
+      edge: r,                                 // 0 center .. 1 rim -> fades at edge
+      drift: 0.004 + Math.random() * 0.012,    // tiny horizontal shimmer amplitude
+      bob: 0.003 + Math.random() * 0.010,      // tiny vertical shimmer amplitude
+      sw: 0.6 + Math.random() * 1.8,           // shimmer freq
+      ph: Math.random() * Math.PI * 2,
+      a: 0.32 + Math.random() * 0.38,          // brighter -> denser-looking cushion
+      hue: 256 + Math.random() * 34,           // same blue-violet as the wind
+      size: 1.0 + Math.random() * 2.2,
+      twPhase: Math.random() * Math.PI * 2,
+      twSpeed: 2.0 + Math.random() * 4.0,
+    });
+  }
+}
+
+const F = 4.2;  // camera distance
+
+function resize() {
+  const dpr = devicePixelRatio || 1;
+  W = canvas.width = window.innerWidth * dpr;
+  H = canvas.height = window.innerHeight * dpr;
+  cx = W / 2; cy = H / 2;
+  const pfMax = F / (F - halfSpan);
+  scale = (Math.min(W, H) * 0.74 / 2) / (halfSpan * pfMax);
+}
+window.addEventListener('resize', resize);
+build();
+resize();
+
+let t0 = null;
+function frame(ts) {
+  if (t0 === null) t0 = ts;
+  const time = (ts - t0) / 1000;
+  const dpr = devicePixelRatio || 1;
+  const unit = Math.min(W, H);
+
+  const ang = Math.sin(time * 0.55) * 0.52;   // gentle 3D rocking
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  const beat = 1 + Math.sin(time * 1.8) * 0.03;
+
+  ctx.fillStyle = '#05020a';
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+
+  // ---- (2) wind: swirling glitter DOTS drifting under the heart ----
+  for (let i = 0; i < wind.length; i++) {
+    const p = wind[i];
+    const t = ((time * p.spd + p.off) % 1 + 1) % 1;       // 0..1 life
+    const tw = 0.55 + 0.45 * Math.sin(time * p.twSpeed + p.twPhase);
+    const alpha = Math.sin(Math.PI * t) * p.a * tw;       // fade in & out over life
+    if (alpha < 0.02) continue;
+
+    const x = cx + p.dir * (t - 0.5) * p.spanX * unit
+            + Math.sin(time * p.sw + p.ph) * 0.02 * unit;             // gentle drift
+    const y = cy + p.lane * unit
+            + Math.sin(t * Math.PI * 2 * p.curl + p.ph) * p.wav * unit // curl up/down
+            + Math.cos(time * p.sw + p.ph) * 0.015 * unit;            // slow bob
+
+    ctx.fillStyle = `hsla(${p.hue}, 95%, 58%, ${alpha})`;
+    const s = p.size * dpr;
+    ctx.fillRect(x - s / 2, y - s / 2, s, s);
+  }
+
+  // ---- (3) base: wide flat glitter cushion the heart rests on ----
+  const baseY = cy + 0.30 * unit;                       // just under the heart's tip
+  for (let i = 0; i < base.length; i++) {
+    const p = base[i];
+    const tw = 0.5 + 0.5 * Math.sin(time * p.twSpeed + p.twPhase);
+    const fade = 1 - p.edge;                              // bright center -> soft rim
+    const alpha = p.a * fade * (0.45 + 0.55 * tw);
+    if (alpha < 0.02) continue;
+
+    const x = cx + p.ex * unit + Math.sin(time * p.sw + p.ph) * p.drift * unit;
+    const y = baseY + p.ey * unit + Math.cos(time * p.sw + p.ph) * p.bob * unit;
+
+    ctx.fillStyle = `hsla(${p.hue}, 95%, 60%, ${alpha})`;
+    const s = p.size * dpr;
+    ctx.fillRect(x - s / 2, y - s / 2, s, s);
+  }
+
+  // ---- heart body + aura ----
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const xr = p.x * ca - p.y * sa;
+    const dr = p.x * sa + p.y * ca;
+    const pf = F / (F - dr);
+    const sx = cx + xr * scale * pf * beat;
+    const sy = cy - p.z * scale * pf * beat;
+
+    const depthShade = 0.45 + 0.55 * ((dr + halfSpan) / (2 * halfSpan));
+    const tw = 0.55 + 0.45 * Math.sin(time * p.twSpeed + p.twPhase);
+
+    let alpha, light;
+    if (p.aura) {
+      alpha = p.base * (0.5 + 0.5 * tw) * (0.6 + 0.4 * depthShade);
+      light = 70;
+    } else {
+      alpha = p.base * depthShade * (0.45 + 0.55 * tw);
+      light = 44 + depthShade * 24;
+    }
+    if (alpha < 0.025) continue;
+
+    ctx.fillStyle = `hsla(${p.hue}, 96%, ${light}%, ${alpha})`;
+    const s = p.size * pf * dpr;
+    ctx.fillRect(sx - s / 2, sy - s / 2, s, s);
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
