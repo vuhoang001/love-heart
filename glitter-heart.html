@@ -16,6 +16,9 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
 let W, H, cx, cy, scale;
+// Cap pixel ratio: on 2x/3x screens the canvas is otherwise huge -> big fill
+// cost with 'lighter' blending, which shows up as stutter. 1.5 stays crisp.
+const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
 
 // ---- 3D heart implicit surface (Taubin heart) ----
 // f<=0 is inside. Axes: x=width, y=depth(thin), z=up(vertical).
@@ -34,7 +37,7 @@ function build() {
   pts.length = 0;
 
   // --- Dense 3D fill ---
-  const TARGET = 15000;
+  const TARGET = 9500;
   let placed = 0, guard = 0;
   while (placed < TARGET && guard < TARGET * 30) {
     guard++;
@@ -49,7 +52,7 @@ function build() {
     pts.push({
       x, y, z, surf, aura: false,
       size: 0.9 + Math.random() * 1.5 + surf * 1.1,
-      base: 0.42 + surf * 0.55,
+      base: 0.30 + surf * 0.40,                // lower -> additive stacks stay pink
       twPhase: Math.random() * Math.PI * 2,
       twSpeed: 2.0 + Math.random() * 4.0,
       hue: 316 + Math.random() * 30 + surf * 6,
@@ -62,7 +65,7 @@ function build() {
       pts.push({
         x: x * g, y: y * g, z: z * g, surf: 0, aura: true,
         size: 0.9 + Math.random() * 1.5,
-        base: 0.5 + Math.random() * 0.38,        // brighter, crisper rim
+        base: 0.38 + Math.random() * 0.28,       // crisp rim, not blown out
         twPhase: Math.random() * Math.PI * 2,
         twSpeed: 1.5 + Math.random() * 3.0,
         hue: 333 + Math.random() * 9,            // hot pink, slightly whiter
@@ -80,7 +83,7 @@ function build() {
 
   // --- (2) Wind: swirling glitter DOTS under the heart (denser, cool color) ---
   wind.length = 0;
-  const WIND = 4600;
+  const WIND = 3000;
   for (let i = 0; i < WIND; i++) {
     wind.push({
       lane: 0.10 + Math.random() * 0.40,       // how far below center (fraction of unit)
@@ -102,7 +105,7 @@ function build() {
 
   // --- (3) Base: a wide, flat glitter cushion the heart rests on (screen space) ---
   base.length = 0;
-  const BASE = 5200;
+  const BASE = 3600;
   const RX = 0.66;   // horizontal radius (fraction of unit) -> spreads wide
   const RY = 0.115;  // vertical radius (fraction of unit) -> flat but a touch thicker
   for (let i = 0; i < BASE; i++) {
@@ -131,7 +134,7 @@ function build() {
 const F = 4.2;  // camera distance
 
 function resize() {
-  const dpr = devicePixelRatio || 1;
+  const dpr = DPR;
   W = canvas.width = window.innerWidth * dpr;
   H = canvas.height = window.innerHeight * dpr;
   cx = W / 2; cy = H / 2;
@@ -146,7 +149,7 @@ let t0 = null;
 function frame(ts) {
   if (t0 === null) t0 = ts;
   const time = (ts - t0) / 1000;
-  const dpr = devicePixelRatio || 1;
+  const dpr = DPR;
   const unit = Math.min(W, H);
 
   const ang = Math.sin(time * 0.55) * 0.52;   // gentle 3D rocking
@@ -208,10 +211,10 @@ function frame(ts) {
     let alpha, light;
     if (p.aura) {
       alpha = p.base * (0.5 + 0.5 * tw) * (0.6 + 0.4 * depthShade);
-      light = 70;
+      light = 58;                               // was 70 -> less glare, more pink
     } else {
       alpha = p.base * depthShade * (0.45 + 0.55 * tw);
-      light = 44 + depthShade * 24;
+      light = 38 + depthShade * 16;             // was 44+24 -> keep saturated pink
     }
     if (alpha < 0.025) continue;
 
